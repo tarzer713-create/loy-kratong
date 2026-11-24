@@ -452,12 +452,57 @@ const gunRoom = isStaticSite && window.Gun
 const sharedActions = gunRoom ? gunRoom.get('loy-kratong-v1').get('actions') : null;
 const sharedPresence = gunRoom ? gunRoom.get('loy-kratong-v1').get('presence') : null;
 const receivedActionIds = new Set();
+const peerRoom = isStaticSite && window.Peer
+  ? new window.Peer({
+      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+    })
+  : null;
+const peerConnections = new Map();
+if (peerRoom) {
+  peerRoom.on('connection', connection => {
+    peerConnections.set(connection.peer, connection);
+    connection.on('data', packet => applySharedPacket(packet));
+  });
+  peerRoom.on('open', peerId => {
+    sessionStorage.setItem('loyKratongPeerId', peerId);
+  });
+}
+function applySharedPacket(packet) {
+  if (!packet) return;
+  const actionId = packet.actionId;
+  if (actionId && receivedActionIds.has(actionId)) return;
+  if (actionId) receivedActionIds.add(actionId);
+  const data = packet.data || {};
+  if (data.visitorId === visitorId) return;
+  if (packet.type === 'kr') externalImage(data.img, image => krs.push({
+    x: data.x * W,
+    y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
+    vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
+    name: data.name || '', wish: data.wish || '', img: image
+  }));
+  if (packet.type === 'lan') mylans.push({
+    x: data.x * W, y: data.y * H, vy: rnd(26, 38),
+    ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
+  });
+  if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
+}
 if (sharedPresence) {
-  sharedPresence.get(visitorId).put({ seenAt: Date.now() });
-  setInterval(() => sharedPresence.get(visitorId).put({ seenAt: Date.now() }), 10000);
+  const publishPresence = () => sharedPresence.get(visitorId).put({
+    seenAt: Date.now(),
+    peerId: sessionStorage.getItem('loyKratongPeerId') || null
+  });
+  publishPresence();
+  setInterval(publishPresence, 10000);
   sharedPresence.map().on((person, id) => {
     if (!person || !id || typeof person.seenAt !== 'number') return;
-    if (Date.now() - person.seenAt < 35000) staticTabs.set(id, person.seenAt);
+    if (Date.now() - person.seenAt < 35000) {
+      staticTabs.set(id, person.seenAt);
+      if (peerRoom && person.peerId && id !== visitorId && !peerConnections.has(person.peerId)) {
+        const connection = peerRoom.connect(person.peerId);
+        peerConnections.set(person.peerId, connection);
+        connection.on('data', packet => applySharedPacket(packet));
+      }
+    }
     else staticTabs.delete(id);
     online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
   });
@@ -517,8 +562,12 @@ if (sharedChannel) {
 
 async function broadcastAction(type, data) {
   if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
-    if (sharedChannel) sharedChannel.postMessage({ type, data: { ...data, visitorId } });
-    if (sharedActions) sharedActions.set({ type, data: { ...data, visitorId } });
+    const packet = { actionId: `${visitorId}-${Date.now()}-${Math.random()}`, type, data: { ...data, visitorId } };
+    if (sharedChannel) sharedChannel.postMessage(packet);
+    if (sharedActions) sharedActions.set(packet);
+    for (const connection of peerConnections.values()) {
+      if (connection.open) connection.send(packet);
+    }
     return;
   }
   try {
