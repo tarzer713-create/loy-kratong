@@ -592,7 +592,21 @@ async function pollState() {
   } catch (_) {}
 }
 
+function startStaticStream() {
+  if (!isStaticSite || !window.EventSource) return;
+  const stream = new EventSource('https://ntfy.sh/loy-kratong-tarzer713-events/sse');
+  stream.onmessage = event => {
+    try {
+      const message = JSON.parse(event.data);
+      const packet = JSON.parse(message.message);
+      applySharedPacket(packet);
+    } catch (_) {}
+  };
+  stream.onerror = () => {};
+}
+
 heartbeat();
 pollState();
+startStaticStream();
 setInterval(heartbeat, 10000);
 setInterval(pollState, 1000);
