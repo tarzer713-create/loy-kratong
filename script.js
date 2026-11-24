@@ -443,7 +443,7 @@ sessionStorage.setItem('krathongVisitorId', visitorId);
 let lastSequence = 0;
 const online = document.getElementById('online');
 const isStaticSite = window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io');
-const SHARED_API = 'https://peripherals-practitioners-favorite-conclusions.trycloudflare.com';
+const SHARED_API = 'https://leone-islands-dvd-pays.trycloudflare.com';
 const staticTabs = new Map([[visitorId, Date.now()]]);
 const receivedActionIds = new Set();
 function applySharedPacket(packet) {
