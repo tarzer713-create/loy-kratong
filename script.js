@@ -446,6 +446,41 @@ const isStaticSite = window.location.protocol === 'https:' && window.location.ho
 const sharedChannel = isStaticSite && 'BroadcastChannel' in window
   ? new BroadcastChannel('loy-kratong-shared') : null;
 const staticTabs = new Map([[visitorId, Date.now()]]);
+const gunRoom = isStaticSite && window.Gun
+  ? window.Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun'])
+  : null;
+const sharedActions = gunRoom ? gunRoom.get('loy-kratong-v1').get('actions') : null;
+const sharedPresence = gunRoom ? gunRoom.get('loy-kratong-v1').get('presence') : null;
+const receivedActionIds = new Set();
+if (sharedPresence) {
+  sharedPresence.get(visitorId).put({ seenAt: Date.now() });
+  setInterval(() => sharedPresence.get(visitorId).put({ seenAt: Date.now() }), 10000);
+  sharedPresence.map().on((person, id) => {
+    if (!person || !id || typeof person.seenAt !== 'number') return;
+    if (Date.now() - person.seenAt < 35000) staticTabs.set(id, person.seenAt);
+    else staticTabs.delete(id);
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+  });
+}
+if (sharedActions) {
+  sharedActions.map().on((packet, actionId) => {
+    if (!packet || receivedActionIds.has(actionId)) return;
+    receivedActionIds.add(actionId);
+    const data = packet.data || {};
+    if (data.visitorId === visitorId) return;
+    if (packet.type === 'kr') externalImage(data.img, image => krs.push({
+      x: data.x * W,
+      y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
+      vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
+      name: data.name || '', wish: data.wish || '', img: image
+    }));
+    if (packet.type === 'lan') mylans.push({
+      x: data.x * W, y: data.y * H, vy: rnd(26, 38),
+      ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
+    });
+    if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
+  });
+}
 if (sharedChannel) {
   online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
   sharedChannel.addEventListener('message', event => {
@@ -483,6 +518,7 @@ if (sharedChannel) {
 async function broadcastAction(type, data) {
   if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
     if (sharedChannel) sharedChannel.postMessage({ type, data: { ...data, visitorId } });
+    if (sharedActions) sharedActions.set({ type, data: { ...data, visitorId } });
     return;
   }
   try {
