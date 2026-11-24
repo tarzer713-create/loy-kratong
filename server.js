@@ -69,9 +69,10 @@ const server = http.createServer(async (request, response) => {
       if (!body.type || !body.data || typeof body.data !== 'object') {
         return sendJson(response, 400, { error: 'invalid action' });
       }
-      const event = { seq: ++sequence, type: String(body.type).slice(0, 20), data: body.data };
+      const event = { seq: ++sequence, createdAt: Date.now(), type: String(body.type).slice(0, 20), data: body.data };
       events.push(event);
-      if (events.length > 300) events.shift();
+      const cutoff = Date.now() - 60000;
+      while (events.length && (events.length > 300 || events[0].createdAt < cutoff)) events.shift();
       return sendJson(response, 200, { seq: event.seq });
     } catch { return sendJson(response, 400, { error: 'invalid request' }); }
   }

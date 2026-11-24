@@ -221,7 +221,11 @@ function drawLantern(l) {
 // ---- fireworks ----
 let rockets = [], sparks = [], flashes = [], queue = [], mylans = [];
 function launch(x, ty) { rockets.push({ x, y: horizon - 4, ty: Math.max(40, Math.min(ty, horizon * 0.7)), t: [] }); }
-function volley(n) { for (let i = 0; i < n; i++) queue.push({ at: T + i * 0.4, x: rnd(W * 0.12, W * 0.88), ty: rnd(horizon * 0.15, horizon * 0.6) }); }
+function volley(n) {
+  const slots = Math.max(0, 18 - queue.length - rockets.length);
+  for (let i = 0; i < Math.min(n, slots); i++)
+    queue.push({ at: T + i * 0.4, x: rnd(W * 0.12, W * 0.88), ty: rnd(horizon * 0.15, horizon * 0.6) });
+}
 let fireworkAudio = null;
 function unlockFireworkAudio() {
   if (!fireworkAudio) {
@@ -448,22 +452,35 @@ const staticTabs = new Map([[visitorId, Date.now()]]);
 const receivedActionIds = new Set();
 function applySharedPacket(packet) {
   if (!packet) return;
+  const age = packet.createdAt ? Math.max(0, (Date.now() - packet.createdAt) / 1000) : Infinity;
+  if ((packet.type === 'fw' && age > (packet.data && packet.data.volley ? 2.5 : 1.5)) ||
+      (packet.type === 'lan' && age > 20) ||
+      (packet.type === 'kr' && age > 60)) return;
   const actionId = packet.actionId;
   if (actionId && receivedActionIds.has(actionId)) return;
   if (actionId) receivedActionIds.add(actionId);
   const data = packet.data || {};
   if (data.visitorId === visitorId) return;
-  if (packet.type === 'kr') externalImage(data.img, image => krs.push({
-    x: data.x * W,
-    y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
-    vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
-    name: data.name || '', wish: data.wish || '', img: image
-  }));
-  if (packet.type === 'lan') mylans.push({
-    x: data.x * W, y: data.y * H, vy: rnd(26, 38),
-    ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
-  });
-  if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
+  if (packet.type === 'kr') {
+    const y = Math.max(data.y * H, horizon + (H - horizon) * 0.12);
+    const vx = rnd(8, 16);
+    const x = data.x * W + vx * depth(y) * age;
+    if (x <= W + 90) externalImage(data.img, image => krs.push({
+      x, y, vx, ph: rnd(0, 6.28), hue: rnd(318, 350),
+      name: data.name || '', wish: data.wish || '', img: image
+    }));
+  }
+  if (packet.type === 'lan') {
+    const vy = rnd(26, 38), y = data.y * H - vy * age;
+    if (y > -60) mylans.push({
+      x: data.x * W, y, vy, ph: rnd(0, 6.28), s: 1.7,
+      name: data.name || '', wish: data.wish || ''
+    });
+  }
+  if (packet.type === 'fw') {
+    if (data.volley) volley(Math.max(0, data.volley - Math.floor(age / 0.4)));
+    else launch(data.x * W, data.ty * H);
+  }
 }
 
 async function broadcastAction(type, data) {
@@ -536,7 +553,7 @@ async function pollState() {
       lastSequence = Math.max(lastSequence, state.sequence);
       online.textContent = `กำลังใช้งานอยู่ ${state.users} คน`;
       for (const event of state.events) {
-        applySharedPacket({ actionId: `server-${event.seq}`, type: event.type, data: event.data });
+        applySharedPacket({ actionId: `server-${event.seq}`, type: event.type, data: event.data, createdAt: event.createdAt });
       }
     } catch (_) {}
     return;
@@ -548,34 +565,7 @@ async function pollState() {
     lastSequence = Math.max(lastSequence, state.sequence);
     online.textContent = `กำลังใช้งานอยู่ ${state.users} คน`;
     for (const event of state.events) {
-      if (event.data.visitorId === visitorId) continue;
-      if (event.type === 'kr') {
-        externalImage(event.data.img, image => {
-          krs.push({
-            x: event.data.x * W,
-            y: Math.max(event.data.y * H, horizon + (H - horizon) * 0.12),
-            vx: rnd(8, 16),
-            ph: rnd(0, 6.28),
-            hue: rnd(318, 350),
-            name: event.data.name || '',
-            wish: event.data.wish || '',
-            img: image
-          });
-        });
-      } else if (event.type === 'lan') {
-        mylans.push({
-          x: event.data.x * W,
-          y: event.data.y * H,
-          vy: rnd(26, 38),
-          ph: rnd(0, 6.28),
-          s: 1.7,
-          name: event.data.name || '',
-          wish: event.data.wish || ''
-        });
-      } else if (event.type === 'fw') {
-        if (event.data.volley) volley(event.data.volley);
-        else launch(event.data.x * W, event.data.ty * H);
-      }
+      applySharedPacket({ actionId: `server-${event.seq}`, type: event.type, data: event.data, createdAt: event.createdAt });
     }
   } catch (_) {}
 }
