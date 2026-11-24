@@ -270,10 +270,10 @@ function fireworkSound() {
   boom.stop(now + 0.95);
 }
 function burst(x, y) {
-  const n = 70 + (Math.random() * 30 | 0), ring = Math.random() < 0.4, h1 = rnd(0, 360), h2 = h1 + rnd(50, 160);
+  const n = 70 + (Math.random() * 30 | 0), h1 = rnd(0, 360), h2 = h1 + rnd(50, 160);
   fireworkSound();
   for (let i = 0; i < n; i++) {
-    const a = i / n * 6.283, sp = ring ? 170 : rnd(40, 210);
+    const a = i / n * 6.283 + rnd(-0.04, 0.04), sp = rnd(55, 210);
     sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, l: 1, d: rnd(0.5, 0.9), h: i % 3 ? h1 : h2 });
   }
   flashes.push({ x, y, l: 1, h: h1 });
