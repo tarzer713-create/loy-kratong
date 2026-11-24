@@ -472,7 +472,7 @@ async function broadcastAction(type, data) {
     try {
       await fetch(`${SHARED_API}/api/action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Cache-Control': 'no-cache' },
         body: JSON.stringify({ type: packet.type, data: packet.data }),
         keepalive: true
       });
