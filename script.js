@@ -1,3 +1,5 @@
+import { joinRoom } from 'https://esm.sh/trystero@0.27.0/nostr';
+
 const c = document.getElementById('c'), g = c.getContext('2d');
 const rnd = (a, b) => a + Math.random() * (b - a);
 const slow = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.25 : 1;
@@ -446,26 +448,37 @@ const isStaticSite = window.location.protocol === 'https:' && window.location.ho
 const sharedChannel = isStaticSite && 'BroadcastChannel' in window
   ? new BroadcastChannel('loy-kratong-shared') : null;
 const staticTabs = new Map([[visitorId, Date.now()]]);
-const gunRoom = isStaticSite && window.Gun
-  ? window.Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://gun-us.herokuapp.com/gun'])
-  : null;
-const sharedActions = gunRoom ? gunRoom.get('loy-kratong-v1').get('actions') : null;
-const sharedPresence = gunRoom ? gunRoom.get('loy-kratong-v1').get('presence') : null;
 const receivedActionIds = new Set();
-const peerRoom = isStaticSite && window.Peer
-  ? new window.Peer({
-      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-    })
-  : null;
-const peerConnections = new Map();
-if (peerRoom) {
-  peerRoom.on('connection', connection => {
-    peerConnections.set(connection.peer, connection);
-    connection.on('data', packet => applySharedPacket(packet));
+let sendAction = null;
+if (isStaticSite) {
+  const room = joinRoom({ appId: 'loy-kratong-tarzer713-v1' }, 'loy-kratong-shared-room');
+  const [actionChannel, getPeers] = room.makeAction('action');
+  const [presenceChannel, getPresencePeers] = room.makeAction('presence');
+  sendAction = packet => actionChannel(packet);
+  actionChannel((packet, peerId) => {
+    if (peerId) applySharedPacket(packet);
   });
-  peerRoom.on('open', peerId => {
-    sessionStorage.setItem('loyKratongPeerId', peerId);
+  room.onPeerJoin(peerId => {
+    staticTabs.set(peerId, Date.now());
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+    presenceChannel({ visitorId, seenAt: Date.now(), join: true });
   });
+  room.onPeerLeave(peerId => {
+    staticTabs.delete(peerId);
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+  });
+  presenceChannel((packet, peerId) => {
+    if (!packet || packet.visitorId === visitorId) return;
+    staticTabs.set(peerId, packet.seenAt || Date.now());
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+  });
+  setInterval(() => presenceChannel({ visitorId, seenAt: Date.now(), join: false }), 10000);
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+  }, 1000);
+  online.textContent = 'กำลังเชื่อมต่อ…';
 }
 function applySharedPacket(packet) {
   if (!packet) return;
@@ -485,46 +498,6 @@ function applySharedPacket(packet) {
     ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
   });
   if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
-}
-if (sharedPresence) {
-  const publishPresence = () => sharedPresence.get(visitorId).put({
-    seenAt: Date.now(),
-    peerId: sessionStorage.getItem('loyKratongPeerId') || null
-  });
-  publishPresence();
-  setInterval(publishPresence, 10000);
-  sharedPresence.map().on((person, id) => {
-    if (!person || !id || typeof person.seenAt !== 'number') return;
-    if (Date.now() - person.seenAt < 35000) {
-      staticTabs.set(id, person.seenAt);
-      if (peerRoom && person.peerId && id !== visitorId && !peerConnections.has(person.peerId)) {
-        const connection = peerRoom.connect(person.peerId);
-        peerConnections.set(person.peerId, connection);
-        connection.on('data', packet => applySharedPacket(packet));
-      }
-    }
-    else staticTabs.delete(id);
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  });
-}
-if (sharedActions) {
-  sharedActions.map().on((packet, actionId) => {
-    if (!packet || receivedActionIds.has(actionId)) return;
-    receivedActionIds.add(actionId);
-    const data = packet.data || {};
-    if (data.visitorId === visitorId) return;
-    if (packet.type === 'kr') externalImage(data.img, image => krs.push({
-      x: data.x * W,
-      y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
-      vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
-      name: data.name || '', wish: data.wish || '', img: image
-    }));
-    if (packet.type === 'lan') mylans.push({
-      x: data.x * W, y: data.y * H, vy: rnd(26, 38),
-      ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
-    });
-    if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
-  });
 }
 if (sharedChannel) {
   online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
@@ -564,10 +537,7 @@ async function broadcastAction(type, data) {
   if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
     const packet = { actionId: `${visitorId}-${Date.now()}-${Math.random()}`, type, data: { ...data, visitorId } };
     if (sharedChannel) sharedChannel.postMessage(packet);
-    if (sharedActions) sharedActions.set(packet);
-    for (const connection of peerConnections.values()) {
-      if (connection.open) connection.send(packet);
-    }
+    if (sendAction) sendAction(packet);
     return;
   }
   try {
