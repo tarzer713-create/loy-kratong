@@ -442,8 +442,48 @@ const visitorId = sessionStorage.getItem('krathongVisitorId') ||
 sessionStorage.setItem('krathongVisitorId', visitorId);
 let lastSequence = 0;
 const online = document.getElementById('online');
+const isStaticSite = window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io');
+const sharedChannel = isStaticSite && 'BroadcastChannel' in window
+  ? new BroadcastChannel('loy-kratong-shared') : null;
+const staticTabs = new Map([[visitorId, Date.now()]]);
+if (sharedChannel) {
+  sharedChannel.addEventListener('message', event => {
+    const packet = event.data;
+    if (!packet) return;
+    if (packet.type === 'online') {
+      if (packet.visitorId === visitorId) return;
+      staticTabs.set(packet.visitorId, Date.now());
+      online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+      return;
+    }
+    const data = packet.data || {};
+    if (data.visitorId === visitorId) return;
+    if (packet.type === 'kr') externalImage(data.img, image => krs.push({
+      x: data.x * W,
+      y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
+      vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
+      name: data.name || '', wish: data.wish || '', img: image
+    }));
+    if (packet.type === 'lan') mylans.push({
+      x: data.x * W, y: data.y * H, vy: rnd(26, 38),
+      ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
+    });
+    if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
+  });
+  sharedChannel.postMessage({ type: 'online', visitorId });
+  setInterval(() => sharedChannel.postMessage({ type: 'online', visitorId }), 10000);
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
+    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+  }, 1000);
+}
 
 async function broadcastAction(type, data) {
+  if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
+    if (sharedChannel) sharedChannel.postMessage({ type, data: { ...data, visitorId } });
+    return;
+  }
   try {
     await fetch('/api/action', {
       method: 'POST',
@@ -454,6 +494,7 @@ async function broadcastAction(type, data) {
 }
 
 async function heartbeat() {
+  if (isStaticSite) return;
   try {
     const response = await fetch('/api/heartbeat', {
       method: 'POST',
@@ -478,6 +519,7 @@ function externalImage(src, callback) {
 }
 
 async function pollState() {
+  if (isStaticSite) return;
   try {
     const response = await fetch(`/api/state?after=${lastSequence}`);
     if (!response.ok) return;
