@@ -472,7 +472,7 @@ async function broadcastAction(type, data) {
     try {
       await fetch(`${SHARED_API}/api/action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Cache-Control': 'no-cache' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({ type: packet.type, data: packet.data }),
         keepalive: true
       });
@@ -493,7 +493,7 @@ async function heartbeat() {
     try {
       await fetch(`${SHARED_API}/api/heartbeat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({ id: visitorId, seenAt: Date.now() })
       });
       const response = await fetch(`${SHARED_API}/api/state?after=0`);
