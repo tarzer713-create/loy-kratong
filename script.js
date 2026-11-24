@@ -447,6 +447,7 @@ const sharedChannel = isStaticSite && 'BroadcastChannel' in window
   ? new BroadcastChannel('loy-kratong-shared') : null;
 const staticTabs = new Map([[visitorId, Date.now()]]);
 if (sharedChannel) {
+  online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
   sharedChannel.addEventListener('message', event => {
     const packet = event.data;
     if (!packet) return;
