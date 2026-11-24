@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ลอยกระทง</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<audio id="music" controls loop preload="auto" aria-label="เพลงประกอบ">
+  <source src="music.mp3" type="audio/mpeg">
+</audio>
+<div id="online" aria-live="polite">กำลังเชื่อมต่อ…</div>
+<h1>ลอยกระทง<small>คืนวันเพ็ญเดือนสิบสอง</small></h1>
+<select id="theme" aria-label="เลือกฉาก">
+  <option value="night">ฉาก: คืนจันทร์เพ็ญ</option>
+  <option value="dusk">ฉาก: ยามพลบค่ำ</option>
+  <option value="stars">ฉาก: ฟ้าดาวเต็มท้องฟ้า</option>
+  <option value="temple">ฉาก: วัดริมน้ำ</option>
+</select>
+<div class="hint" id="hint">คลิกผืนน้ำเพื่อลอยกระทง · คลิกท้องฟ้าเพื่อจุดพลุ · คลิกที่กระทงเพื่ออ่านคำอธิษฐาน</div>
+<div class="panel">
+  <input id="nm" type="text" maxlength="20" placeholder="ใส่ชื่อ" autocomplete="off">
+  <input id="ws" type="text" maxlength="100" placeholder="เขียนคำอธิษฐาน" autocomplete="off">
+  <label class="pic"><input class="sr" id="pf" type="file" accept="image/*"><img id="pv" alt=""><span>เลือกรูป</span></label>
+  <div class="seg" role="radiogroup" aria-label="เลือกสิ่งที่จะปล่อย">
+    <label><input class="sr" type="radio" name="mode" value="kr" checked><span>ลอยกระทง</span></label>
+    <label><input class="sr" type="radio" name="mode" value="lan"><span>ลอยโคม</span></label>
+    <label><input class="sr" type="radio" name="mode" value="fw"><span>จุดพลุ</span></label>
+  </div>
+  <button class="btn" id="go" type="button">ลอยกระทง</button>
+</div>
+<div id="wish" role="dialog" aria-live="polite" hidden>
+  <button id="wx" type="button" aria-label="ปิด">×</button>
+  <img id="wi" alt="">
+  <div id="wn"></div>
+  <p id="wt"></p>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
