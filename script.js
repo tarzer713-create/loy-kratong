@@ -1,5 +1,3 @@
-import { joinRoom } from 'https://esm.sh/trystero@0.27.0/nostr';
-
 const c = document.getElementById('c'), g = c.getContext('2d');
 const rnd = (a, b) => a + Math.random() * (b - a);
 const slow = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.25 : 1;
@@ -445,41 +443,8 @@ sessionStorage.setItem('krathongVisitorId', visitorId);
 let lastSequence = 0;
 const online = document.getElementById('online');
 const isStaticSite = window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io');
-const sharedChannel = isStaticSite && 'BroadcastChannel' in window
-  ? new BroadcastChannel('loy-kratong-shared') : null;
 const staticTabs = new Map([[visitorId, Date.now()]]);
 const receivedActionIds = new Set();
-let sendAction = null;
-if (isStaticSite) {
-  const room = joinRoom({ appId: 'loy-kratong-tarzer713-v1' }, 'loy-kratong-shared-room');
-  const [actionChannel, getPeers] = room.makeAction('action');
-  const [presenceChannel, getPresencePeers] = room.makeAction('presence');
-  sendAction = packet => actionChannel(packet);
-  actionChannel((packet, peerId) => {
-    if (peerId) applySharedPacket(packet);
-  });
-  room.onPeerJoin(peerId => {
-    staticTabs.set(peerId, Date.now());
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-    presenceChannel({ visitorId, seenAt: Date.now(), join: true });
-  });
-  room.onPeerLeave(peerId => {
-    staticTabs.delete(peerId);
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  });
-  presenceChannel((packet, peerId) => {
-    if (!packet || packet.visitorId === visitorId) return;
-    staticTabs.set(peerId, packet.seenAt || Date.now());
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  });
-  setInterval(() => presenceChannel({ visitorId, seenAt: Date.now(), join: false }), 10000);
-  setInterval(() => {
-    const now = Date.now();
-    for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  }, 1000);
-  online.textContent = 'กำลังเชื่อมต่อ…';
-}
 function applySharedPacket(packet) {
   if (!packet) return;
   const actionId = packet.actionId;
@@ -499,45 +464,18 @@ function applySharedPacket(packet) {
   });
   if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
 }
-if (sharedChannel) {
-  online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  sharedChannel.addEventListener('message', event => {
-    const packet = event.data;
-    if (!packet) return;
-    if (packet.type === 'online') {
-      if (packet.visitorId === visitorId) return;
-      staticTabs.set(packet.visitorId, Date.now());
-      online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-      return;
-    }
-    const data = packet.data || {};
-    if (data.visitorId === visitorId) return;
-    if (packet.type === 'kr') externalImage(data.img, image => krs.push({
-      x: data.x * W,
-      y: Math.max(data.y * H, horizon + (H - horizon) * 0.12),
-      vx: rnd(8, 16), ph: rnd(0, 6.28), hue: rnd(318, 350),
-      name: data.name || '', wish: data.wish || '', img: image
-    }));
-    if (packet.type === 'lan') mylans.push({
-      x: data.x * W, y: data.y * H, vy: rnd(26, 38),
-      ph: rnd(0, 6.28), s: 1.7, name: data.name || '', wish: data.wish || ''
-    });
-    if (packet.type === 'fw') data.volley ? volley(data.volley) : launch(data.x * W, data.ty * H);
-  });
-  sharedChannel.postMessage({ type: 'online', visitorId });
-  setInterval(() => sharedChannel.postMessage({ type: 'online', visitorId }), 10000);
-  setInterval(() => {
-    const now = Date.now();
-    for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
-    online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
-  }, 1000);
-}
 
 async function broadcastAction(type, data) {
   if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
     const packet = { actionId: `${visitorId}-${Date.now()}-${Math.random()}`, type, data: { ...data, visitorId } };
-    if (sharedChannel) sharedChannel.postMessage(packet);
-    if (sendAction) sendAction(packet);
+    try {
+      await fetch('https://ntfy.sh/loy-kratong-tarzer713-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        body: JSON.stringify(packet),
+        keepalive: true
+      });
+    } catch (_) {}
     return;
   }
   try {
@@ -550,7 +488,31 @@ async function broadcastAction(type, data) {
 }
 
 async function heartbeat() {
-  if (isStaticSite) return;
+  if (isStaticSite) {
+    try {
+      await fetch('https://ntfy.sh/loy-kratong-tarzer713-presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: visitorId, seenAt: Date.now() })
+      });
+      const response = await fetch('https://ntfy.sh/loy-kratong-tarzer713-presence/json?poll=1');
+      if (response.ok) {
+        const text = await response.text();
+        const now = Date.now();
+        for (const line of text.trim().split('\n')) {
+          if (!line) continue;
+          try {
+            const message = JSON.parse(line);
+            const presence = JSON.parse(message.message);
+            if (now - presence.seenAt < 35000) staticTabs.set(presence.id, presence.seenAt);
+          } catch (_) {}
+        }
+        for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
+        online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+      }
+    } catch (_) {}
+    return;
+  }
   try {
     const response = await fetch('/api/heartbeat', {
       method: 'POST',
@@ -575,7 +537,22 @@ function externalImage(src, callback) {
 }
 
 async function pollState() {
-  if (isStaticSite) return;
+  if (isStaticSite) {
+    try {
+      const response = await fetch('https://ntfy.sh/loy-kratong-tarzer713-events/json?poll=1');
+      if (!response.ok) return;
+      const text = await response.text();
+      for (const line of text.trim().split('\n')) {
+        if (!line) continue;
+        try {
+          const message = JSON.parse(line);
+          const packet = JSON.parse(message.message);
+          applySharedPacket(packet);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return;
+  }
   try {
     const response = await fetch(`/api/state?after=${lastSequence}`);
     if (!response.ok) return;
