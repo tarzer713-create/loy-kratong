@@ -421,7 +421,7 @@ function draw() {
   }
   for (const r of rips) {
     g.strokeStyle = `rgba(255,220,150,${r.l * 0.6})`; g.lineWidth = 1.5;
-    g.beginPath(); g.ellipse(r.x, r.y, r.r, r.r * 0.3, 0, 0, 6.283); g.stroke();
+    g.beginPath(); g.ellipse(r.x, r.y, Math.max(0.1, r.r), Math.max(0.1, r.r * 0.3), 0, 0, 6.283); g.stroke();
   }
 
   // krathongs, far to near
