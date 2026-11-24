@@ -443,6 +443,7 @@ sessionStorage.setItem('krathongVisitorId', visitorId);
 let lastSequence = 0;
 const online = document.getElementById('online');
 const isStaticSite = window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io');
+const SHARED_API = 'https://peripherals-practitioners-favorite-conclusions.trycloudflare.com';
 const staticTabs = new Map([[visitorId, Date.now()]]);
 const receivedActionIds = new Set();
 function applySharedPacket(packet) {
@@ -469,10 +470,10 @@ async function broadcastAction(type, data) {
   if (window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')) {
     const packet = { actionId: `${visitorId}-${Date.now()}-${Math.random()}`, type, data: { ...data, visitorId } };
     try {
-      await fetch('https://ntfy.sh/loy-kratong-tarzer713-events', {
+      await fetch(`${SHARED_API}/api/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-        body: JSON.stringify(packet),
+        body: JSON.stringify({ type: packet.type, data: packet.data }),
         keepalive: true
       });
     } catch (_) {}
@@ -490,25 +491,15 @@ async function broadcastAction(type, data) {
 async function heartbeat() {
   if (isStaticSite) {
     try {
-      await fetch('https://ntfy.sh/loy-kratong-tarzer713-presence', {
+      await fetch(`${SHARED_API}/api/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: visitorId, seenAt: Date.now() })
       });
-      const response = await fetch('https://ntfy.sh/loy-kratong-tarzer713-presence/json?poll=1');
+      const response = await fetch(`${SHARED_API}/api/state?after=0`);
       if (response.ok) {
-        const text = await response.text();
-        const now = Date.now();
-        for (const line of text.trim().split('\n')) {
-          if (!line) continue;
-          try {
-            const message = JSON.parse(line);
-            const presence = JSON.parse(message.message);
-            if (now - presence.seenAt < 35000) staticTabs.set(presence.id, presence.seenAt);
-          } catch (_) {}
-        }
-        for (const [id, seen] of staticTabs) if (now - seen > 35000) staticTabs.delete(id);
-        online.textContent = `กำลังใช้งานอยู่ ${staticTabs.size} คน`;
+        const state = await response.json();
+        online.textContent = `กำลังใช้งานอยู่ ${state.users} คน`;
       }
     } catch (_) {}
     return;
@@ -539,16 +530,13 @@ function externalImage(src, callback) {
 async function pollState() {
   if (isStaticSite) {
     try {
-      const response = await fetch('https://ntfy.sh/loy-kratong-tarzer713-events/json?poll=1');
+      const response = await fetch(`${SHARED_API}/api/state?after=${lastSequence}`);
       if (!response.ok) return;
-      const text = await response.text();
-      for (const line of text.trim().split('\n')) {
-        if (!line) continue;
-        try {
-          const message = JSON.parse(line);
-          const packet = JSON.parse(message.message);
-          applySharedPacket(packet);
-        } catch (_) {}
+      const state = await response.json();
+      lastSequence = Math.max(lastSequence, state.sequence);
+      online.textContent = `กำลังใช้งานอยู่ ${state.users} คน`;
+      for (const event of state.events) {
+        applySharedPacket({ actionId: `server-${event.seq}`, type: event.type, data: event.data });
       }
     } catch (_) {}
     return;
@@ -593,16 +581,8 @@ async function pollState() {
 }
 
 function startStaticStream() {
-  if (!isStaticSite || !window.EventSource) return;
-  const stream = new EventSource('https://ntfy.sh/loy-kratong-tarzer713-events/sse');
-  stream.onmessage = event => {
-    try {
-      const message = JSON.parse(event.data);
-      const packet = JSON.parse(message.message);
-      applySharedPacket(packet);
-    } catch (_) {}
-  };
-  stream.onerror = () => {};
+  if (!isStaticSite) return;
+  setInterval(pollState, 500);
 }
 
 heartbeat();
